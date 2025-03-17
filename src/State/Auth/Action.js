@@ -330,36 +330,179 @@ export const updateCartItemQuantity =
     }
   };
 
-  export const getUserAddresses = () => async (dispatch, getState) => {
-    dispatch({ type: GET_USER_ADDRESSES_REQUEST });
-    try {
-      const token = localStorage.getItem("jwt");
-      const response = await axios.get(`${API_BASE_URL}/api/user/addresses`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      dispatch({ type: GET_USER_ADDRESSES_SUCCESS, payload: response.data });
-    } catch (error) {
-      dispatch({
-        type: GET_USER_ADDRESSES_FAILURE,
-        payload: error.response?.data?.message || "Failed to fetch addresses",
-      });
-    }
-  };
+export const getUserAddresses = () => async (dispatch, getState) => {
+  dispatch({ type: GET_USER_ADDRESSES_REQUEST });
+  try {
+    const token = localStorage.getItem("jwt");
+    const response = await axios.get(`${API_BASE_URL}/api/user/addresses`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    dispatch({ type: GET_USER_ADDRESSES_SUCCESS, payload: response.data });
+  } catch (error) {
+    dispatch({
+      type: GET_USER_ADDRESSES_FAILURE,
+      payload: error.response?.data?.message || "Failed to fetch addresses",
+    });
+  }
+};
 
-  export const updateAddress = (addressData) => async (dispatch) => {
-    dispatch({ type: UPDATE_ADDRESS_REQUEST });
-    try {
-      const token = localStorage.getItem("jwt");
-      const response = await axios.post(`${API_BASE_URL}/api/user/addresses`, addressData, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      dispatch({ type: UPDATE_ADDRESS_SUCCESS, payload: response.data });
-      // Sau khi thêm thành công, gọi lại getUserAddresses để cập nhật danh sách
-      dispatch(getUserAddresses());
-    } catch (error) {
-      dispatch({
-        type: UPDATE_ADDRESS_FAILURE,
-        payload: error.response?.data?.message || "Failed to update address",
-      });
+
+export const addAddress = (addressData) => async (dispatch) => {
+  try {
+    const token = localStorage.getItem("jwt");
+    const response = await fetch("http://localhost:8081/api/addresses", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify(addressData),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(errorData.message || "Failed to add address");
     }
-  };
+
+    const data = await response.json();
+    dispatch({ type: "ADD_ADDRESS_SUCCESS", payload: data });
+    dispatch(getUserAddresses()); // Cập nhật danh sách địa chỉ sau khi thêm
+    return data; // Trả về dữ liệu địa chỉ để sử dụng nếu cần
+  } catch (error) {
+    dispatch({ type: "ADD_ADDRESS_FAIL", payload: error.message });
+    throw error;
+  }
+};
+
+export const updateAddress = (addressData) => async (dispatch) => {
+  dispatch({ type: UPDATE_ADDRESS_REQUEST });
+  try {
+    const token = localStorage.getItem("jwt");
+    const response = await axios.post(
+      `${API_BASE_URL}/api/user/addresses`,
+      addressData,
+      {
+        headers: { Authorization: `Bearer ${token}` },
+      }
+    );
+    dispatch({ type: UPDATE_ADDRESS_SUCCESS, payload: response.data });
+    // Sau khi thêm thành công, gọi lại getUserAddresses để cập nhật danh sách
+    dispatch(getUserAddresses());
+  } catch (error) {
+    dispatch({
+      type: UPDATE_ADDRESS_FAILURE,
+      payload: error.response?.data?.message || "Failed to update address",
+    });
+  }
+};
+
+export const removeCartItem = (cartItemId) => async (dispatch) => {
+  try {
+    const token = localStorage.getItem("jwt");
+    const response = await fetch(
+      `http://localhost:8081/api/cart/items/${cartItemId}`,
+      {
+        method: "DELETE",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      }
+    );
+
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(errorData.message || "Failed to remove cart item");
+    }
+
+    dispatch({ type: "REMOVE_CART_ITEM_SUCCESS", payload: cartItemId });
+    dispatch(getCart());
+  } catch (error) {
+    dispatch({ type: "REMOVE_CART_ITEM_FAIL", payload: error.message });
+    throw error;
+  }
+};
+
+export const createOrder = (orderData) => async (dispatch) => {
+  try {
+      const token = localStorage.getItem("jwt");
+      const url = `http://localhost:8081/api/orders/user/create?userId=${orderData.userId}`;
+      const response = await fetch(url, {
+          method: "POST",
+          headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+              shippingAddress: orderData.shippingAddress,
+              selectedVariationIds: orderData.selectedVariationIds,
+          }),
+      });
+
+      if (!response.ok) {
+          let errorData = null;
+          try {
+              errorData = await response.json(); // Thử parse lỗi
+          } catch (e) {
+              throw new Error("Server returned an invalid response");
+          }
+          throw new Error(errorData?.message || "Failed to create order");
+      }
+
+      const data = await response.json(); // Parse dữ liệu thành công
+      dispatch({ type: "CREATE_ORDER_SUCCESS", payload: data });
+      dispatch(getCart());
+      return data;
+  } catch (error) {
+      dispatch({ type: "CREATE_ORDER_FAIL", payload: error.message });
+      throw error;
+  }
+};
+
+export const updateOrderAddress = (orderId, shippingAddress) => async (dispatch) => {
+  try {
+    const token = localStorage.getItem("jwt");
+    const response = await fetch(`http://localhost:8081/api/orders/${orderId}/update-address`, {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify(shippingAddress),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(errorData.message || "Failed to update order address");
+    }
+
+    const data = await response.json();
+    dispatch({ type: "UPDATE_ORDER_ADDRESS_SUCCESS", payload: data });
+    return data;
+  } catch (error) {
+    dispatch({ type: "UPDATE_ORDER_ADDRESS_FAIL", payload: error.message });
+    throw error;
+  }
+};
+
+export const getOrderById = (orderId) => async (dispatch) => {
+  try {
+    const token = localStorage.getItem("jwt");
+    const response = await fetch(`http://localhost:8081/api/orders/${orderId}`, {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(errorData.message || "Failed to fetch order");
+    }
+
+    const data = await response.json();
+    dispatch({ type: "GET_ORDER_SUCCESS", payload: data });
+  } catch (error) {
+    dispatch({ type: "GET_ORDER_FAIL", payload: error.message });
+    throw error;
+  }
+};

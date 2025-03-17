@@ -58,6 +58,9 @@ const initialState = {
   addresses: [], // Thêm state để lưu danh sách địa chỉ
   addressesLoading: false,
   addressesError: null,
+  order: null, // Thêm state cho order
+  orderLoading: false,
+  orderError: null,
 };
 
 const calculateCartSummary = (cartItems) => {
@@ -271,6 +274,18 @@ export const authReducer = (state = initialState, action) => {
         addressesLoading: false,
         addressesError: action.payload,
       };
+      case "CREATE_ORDER_SUCCESS":
+      return { ...state, order: action.payload, orderLoading: false, orderError: null };
+    case "CREATE_ORDER_FAIL":
+      return { ...state, orderLoading: false, orderError: action.payload };
+    case "UPDATE_ORDER_ADDRESS_SUCCESS":
+      return { ...state, order: action.payload, orderLoading: false, orderError: null };
+    case "UPDATE_ORDER_ADDRESS_FAIL":
+      return { ...state, orderLoading: false, orderError: action.payload };
+    case "GET_ORDER_SUCCESS":
+      return { ...state, order: action.payload, orderLoading: false, orderError: null };
+    case "GET_ORDER_FAIL":
+      return { ...state, orderLoading: false, orderError: action.payload };
     default:
       return state;
   }

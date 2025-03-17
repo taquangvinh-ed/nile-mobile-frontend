@@ -2,9 +2,11 @@ import React, { useEffect, useState } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import AddressCard from "../AddressCard/AddressCard";
 import { Autocomplete, Box, Button, TextField } from "@mui/material";
-import { getUserAddresses, updateAddress } from "../../../State/Auth/Action";
+import { getUserAddresses, addAddress, updateOrderAddress } from "../../../State/Auth/Action";
+import { useNavigate } from "react-router-dom";
 
 const ConfirmDeliverAddress = () => {
+  const navigate = useNavigate();
   const dispatch = useDispatch();
   const { addresses, addressesLoading, addressesError } = useSelector(
     (state) => state.auth
@@ -18,55 +20,122 @@ const ConfirmDeliverAddress = () => {
   const [selectedWard, setSelectedWard] = useState(null);
   const [selectedAddressId, setSelectedAddressId] = useState(null);
 
-  // Lấy danh sách địa chỉ khi component mount
   useEffect(() => {
     dispatch(getUserAddresses());
   }, [dispatch]);
 
-  // Lấy danh sách tỉnh/thành phố từ API bên ngoài
   useEffect(() => {
     async function fetchProvinces() {
-      const res = await fetch("https://esgoo.net/api-tinhthanh/1/0.htm");
-      if (!res.ok)
-        throw new Error("Something went wrong with fetching province");
-      const data = await res.json();
-      setProvinces(data.data);
+      try {
+        const res = await fetch("https://esgoo.net/api-tinhthanh/1/0.htm");
+        if (!res.ok) throw new Error("Something went wrong with fetching province");
+        const data = await res.json();
+        setProvinces(data.data || []);
+      } catch (error) {
+        console.error("Failed to fetch provinces:", error);
+      }
     }
     fetchProvinces();
   }, []);
 
-  // Xử lý khi chọn một địa chỉ
   const handleSelectAddress = (addressId) => {
     setSelectedAddressId(addressId);
   };
 
-  // Xử lý submit form để thêm địa chỉ mới
   const handleSubmit = async (e) => {
     e.preventDefault();
     const formData = new FormData(e.currentTarget);
     const addressData = {
       firstName: formData.get("firstName"),
       lastName: formData.get("lastName"),
-      addressLine: formData.get("address"), // Dùng addressLine thay vì streetAddress cho phù hợp với backend
+      addressLine: formData.get("address"),
       province: selectedProvince || "",
       district: selectedDistrict || "",
       ward: selectedWard || "",
       phoneNumber: formData.get("phoneNumber"),
       isDefault: false,
     };
-    console.log("Sending addressData:", addressData);
+
+    if (
+      !addressData.firstName ||
+      !addressData.lastName ||
+      !addressData.addressLine ||
+      !addressData.phoneNumber ||
+      !addressData.province ||
+      !addressData.district ||
+      !addressData.ward
+    ) {
+      alert(
+        "Vui lòng điền đầy đủ thông tin, bao gồm Tỉnh/Thành phố, Quận/Huyện, và Phường/Xã!"
+      );
+      return;
+    }
+
     try {
-      await dispatch(updateAddress(addressData));
-      e.target.reset();
+      // Thêm địa chỉ mới
+      const savedAddress = await dispatch(addAddress(addressData));
+
+      const orderId = localStorage.getItem("pendingOrderId");
+      if (!orderId) {
+        alert("Không tìm thấy đơn hàng để cập nhật địa chỉ!");
+        return;
+      }
+
+      // Cập nhật địa chỉ vào đơn hàng
+      await dispatch(updateOrderAddress(orderId, savedAddress.payload));
+
+      localStorage.removeItem("pendingOrderId");
+      navigate("/order-confirmation", { state: { orderId } });
     } catch (error) {
-      console.error("Failed to add address:", error);
+      console.error("Failed to update order address:", error);
+      alert("Có lỗi xảy ra khi cập nhật địa chỉ: " + error.message);
+    }
+  };
+
+  const handleConfirmWithSelectedAddress = async () => {
+    if (!selectedAddressId) {
+      alert("Vui lòng chọn một địa chỉ giao hàng!");
+      return;
+    }
+
+    const selectedAddress = addresses.find((addr) => addr.addressId === selectedAddressId);
+    if (!selectedAddress) {
+      alert("Địa chỉ không hợp lệ!");
+      return;
+    }
+
+    const addressData = {
+      firstName: selectedAddress.firstName,
+      lastName: selectedAddress.lastName,
+      addressLine: selectedAddress.addressLine,
+      province: selectedAddress.province,
+      district: selectedAddress.district,
+      ward: selectedAddress.ward,
+      phoneNumber: selectedAddress.phoneNumber,
+      isDefault: selectedAddress.isDefault,
+    };
+
+    try {
+      const orderId = localStorage.getItem("pendingOrderId");
+      if (!orderId) {
+        alert("Không tìm thấy đơn hàng để cập nhật địa chỉ!");
+        return;
+      }
+
+      // Cập nhật địa chỉ vào đơn hàng
+      await dispatch(updateOrderAddress(orderId, addressData));
+
+      localStorage.removeItem("pendingOrderId");
+      navigate("/order-confirmation", { state: { orderId } });
+    } catch (error) {
+      console.error("Failed to update order address:", error);
+      alert("Có lỗi xảy ra khi cập nhật địa chỉ: " + error.message);
     }
   };
 
   return (
     <div>
       <div className="grid grid-cols-3 gap-4">
-        {/* Danh sách địa chỉ */}
         <div className="col-span-1 grid grid-cols-1 border rounded-e-sm shadow-md h-[30rem] overflow-y-scroll">
           {addressesLoading ? (
             <p>Loading addresses...</p>
@@ -86,7 +155,12 @@ const ConfirmDeliverAddress = () => {
                   onSelect={handleSelectAddress}
                 />
                 {selectedAddressId === address.addressId && (
-                  <Button sx={{ mt: 2 }} size="large" variant="contained">
+                  <Button
+                    onClick={handleConfirmWithSelectedAddress}
+                    sx={{ mt: 2 }}
+                    size="large"
+                    variant="contained"
+                  >
                     Giao ở địa chỉ này
                   </Button>
                 )}
@@ -95,7 +169,6 @@ const ConfirmDeliverAddress = () => {
           )}
         </div>
 
-        {/* Form thêm địa chỉ mới */}
         <div className="col-span-2 grid grid-cols-2">
           <div className="col-span-3">
             <Box className="w-full border rounded-s-md shadow-md p-5">
@@ -137,28 +210,38 @@ const ConfirmDeliverAddress = () => {
                     <Autocomplete
                       id="province"
                       options={provinces}
-                      getOptionLabel={(option) => option.full_name}
+                      getOptionLabel={(option) => option.full_name || ""}
                       onChange={async (event, newValue) => {
                         setSelectedProvince(newValue?.full_name || null);
+                        setSelectedDistrict(null);
+                        setSelectedWard(null);
                         if (newValue) {
-                          const res = await fetch(
-                            `https://esgoo.net/api-tinhthanh/2/${newValue.id}.htm`
-                          );
-                          if (!res.ok) throw new Error("Get Districts fail");
-                          const data = await res.json();
-                          setDistricts(data.data);
+                          try {
+                            const res = await fetch(
+                              `https://esgoo.net/api-tinhthanh/2/${newValue.id}.htm`
+                            );
+                            if (!res.ok) throw new Error("Get Districts fail");
+                            const data = await res.json();
+                            setDistricts(data.data || []);
+                          } catch (error) {
+                            console.error("Failed to fetch districts:", error);
+                            setDistricts([]);
+                          }
                         } else {
                           setDistricts([]);
                           setWards([]);
                         }
                       }}
+                      value={provinces.find((p) => p.full_name === selectedProvince) || null}
                       renderInput={(params) => (
                         <TextField
+                          required
                           {...params}
                           label="Tỉnh/Thành phố"
                           variant="outlined"
                           fullWidth
-                          required
+                          error={!selectedProvince}
+                          helperText={!selectedProvince ? "Vui lòng chọn Tỉnh/Thành phố" : ""}
                         />
                       )}
                     />
@@ -167,27 +250,36 @@ const ConfirmDeliverAddress = () => {
                     <Autocomplete
                       id="district"
                       options={districts}
-                      getOptionLabel={(option) => option.full_name}
+                      getOptionLabel={(option) => option.full_name || ""}
                       onChange={async (event, newValue) => {
                         setSelectedDistrict(newValue?.full_name || null);
+                        setSelectedWard(null);
                         if (newValue) {
-                          const res = await fetch(
-                            `https://esgoo.net/api-tinhthanh/3/${newValue.id}.htm`
-                          );
-                          if (!res.ok) throw new Error("Get Districts fail");
-                          const data = await res.json();
-                          setWards(data.data);
+                          try {
+                            const res = await fetch(
+                              `https://esgoo.net/api-tinhthanh/3/${newValue.id}.htm`
+                            );
+                            if (!res.ok) throw new Error("Get Wards fail");
+                            const data = await res.json();
+                            setWards(data.data || []);
+                          } catch (error) {
+                            console.error("Failed to fetch wards:", error);
+                            setWards([]);
+                          }
                         } else {
                           setWards([]);
                         }
                       }}
+                      value={districts.find((d) => d.full_name === selectedDistrict) || null}
                       renderInput={(params) => (
                         <TextField
+                          required
                           {...params}
                           label="Quận/Huyện"
                           variant="outlined"
                           fullWidth
-                          required
+                          error={!selectedDistrict}
+                          helperText={!selectedDistrict ? "Vui lòng chọn Quận/Huyện" : ""}
                         />
                       )}
                     />
@@ -196,17 +288,20 @@ const ConfirmDeliverAddress = () => {
                     <Autocomplete
                       id="ward"
                       options={wards}
-                      getOptionLabel={(option) => option.full_name}
+                      getOptionLabel={(option) => option.full_name || ""}
                       onChange={(event, newValue) => {
                         setSelectedWard(newValue?.full_name || null);
                       }}
+                      value={wards.find((w) => w.full_name === selectedWard) || null}
                       renderInput={(params) => (
                         <TextField
+                          required
                           {...params}
                           label="Phường/Xã"
                           variant="outlined"
                           fullWidth
-                          required
+                          error={!selectedWard}
+                          helperText={!selectedWard ? "Vui lòng chọn Phường/Xã" : ""}
                         />
                       )}
                     />
